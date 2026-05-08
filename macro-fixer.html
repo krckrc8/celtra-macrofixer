@@ -1,0 +1,375 @@
+<!doctype html>
+<html lang="en">
+<head>
+  <meta charset="utf-8" />
+  <meta name="viewport" content="width=device-width,initial-scale=1" />
+  <title>Excel Macro Fixer → Fixed XLSX</title>
+  <style>
+    body { font-family: system-ui, -apple-system, Segoe UI, Roboto, Arial, sans-serif; margin: 24px; max-width: 980px; }
+    h1 { font-size: 20px; margin: 0 0 12px; }
+    .card { border: 1px solid #ddd; border-radius: 12px; padding: 16px; margin: 12px 0; }
+    .row { display:flex; gap: 12px; flex-wrap: wrap; align-items:center; }
+    label { display:block; font-weight:600; margin-bottom:8px; }
+    input[type="file"]{ display:block; margin: 8px 0 12px; }
+    button { padding: 10px 14px; border: 0; border-radius: 10px; cursor: pointer; }
+    button:disabled { opacity:.6; cursor:not-allowed; }
+    .muted { color:#666; font-size: 13px; }
+    pre { background:#f7f7f7; padding: 12px; border-radius: 10px; overflow:auto; }
+    .ok { color: #0a7; font-weight:600; }
+    .warn { color: #c80; font-weight:600; }
+    .err { color: #c00; font-weight:600; }
+    code { background:#f1f1f1; padding: 2px 6px; border-radius: 6px; }
+  </style>
+</head>
+<body>
+  <h1>Excel Macro Fixer (XLS/XLSX → XLSX) with change logs</h1>
+
+  <div class="card">
+    <label for="file">1) Select Excel file (.xlsx or .xls)</label>
+    <input
+      id="file"
+      type="file"
+      accept=".xlsx,.xls,application/vnd.openxmlformats-officedocument.spreadsheetml.sheet,application/vnd.ms-excel"
+    />
+    <div class="row">
+      <button id="run" disabled>2) Fix macros and download XLSX</button>
+      <span id="status" class="muted">Please select a file…</span>
+    </div>
+
+    <p class="muted" style="margin-top:10px;">
+      Input: <code>.xls</code> or <code>.xlsx</code>.  
+      Output: always <code>.xlsx</code> (most reliable in browser).
+      Replacements are applied to text cells. Logs show total and per-rule changes.
+    </p>
+  </div>
+
+  <div class="card">
+    <div class="row" style="justify-content: space-between;">
+      <strong>Logs</strong>
+      <div class="row">
+        <button id="copy" disabled>Copy log</button>
+        <button id="downloadLog" disabled>Download log (.txt)</button>
+      </div>
+    </div>
+    <pre id="log"></pre>
+  </div>
+
+  <!-- SheetJS (supports XLS and XLSX) -->
+  <script src="https://cdn.jsdelivr.net/npm/xlsx@0.18.5/dist/xlsx.full.min.js"></script>
+
+  <script>
+    /**
+     * ✅ DEFINE / EXTEND REPLACEMENT RULES HERE
+     */
+    const REPLACEMENTS = [
+      //{ from: '${GDPR}', to: '(window.GG_MACROS.gdpr)' },
+      //{ from: '${GDPR_CONSENT_755}', to: 'window.GG_MACROS.gdprConsent' },
+      //{ from: '${GDPR_CONSENT_278}', to: 'window.GG_MACROS.gdprConsent' },
+      //{ from: '[gdpr]', to: '(window.GG_MACROS.gdpr)' },
+      //{ from: '[gdprConsent]', to: 'window.GG_MACROS.gdprConsent' },
+      //{ from: '[gpp]', to: '(window.GG_MACROS.gdpr)' },
+      //{ from: '[gppSessionId]', to: 'window.GG_MACROS.gdprConsent' },
+      //{ from: '[timestamp]', to: '${CACHEBUSTER}' },
+      
+      // new list 08.05.2026
+      { from: '__ADFCREID__', to: '{celtraExternalCreativeId}' },
+      { from: '__ADFCRE__', to: '{celtraExternalCreativeName}' },
+      { from: '__ADFPUBID__', to: '{celtraExternalSupplierId}' },
+      { from: '__ADFPLAID__', to: '{celtraExternalLineItemId}' },
+      { from: '__ADFCAMID__', to: '{celtraExternalCampaignId}' },
+      { from: '__ADFBNRDOM__', to: '{celtraExternalSiteName}' },
+      { from: '${TM_PLACEMENT_ID_NUM}', to: '{celtraExternalPlacementId}' },
+      { from: '${TM_SITE_ID_NUM}', to: '{celtraExternalSiteId}' },
+      { from: '${TM_SITE_DOMAIN_URLENC}', to: '{celtraExternalSiteName}' },
+      { from: '${TM_CAMPAIGN_ID_NUM}', to: '{celtraExternalCampaignId}' },
+      { from: '{campaignId}', to: '{celtraExternalCampaignId}' },
+      { from: '{adId}', to: '{celtraExternalCreativeId}' },
+      { from: '{siteId}', to: '{celtraExternalSiteId}' },
+      { from: '{networkId}', to: '{celtraExternalSupplierId}' },
+      { from: '{{CREATIVE_ID}}', to: '{celtraExternalCreativeId}' },
+      { from: '{{PLACEMENT_ID}}', to: '{celtraExternalPlacementId}' },
+      { from: '{{APP_BUNDLE}}', to: '{celtraExternalBundleId}' },
+      { from: '{{CAMPAIGN_ID}}', to: '{celtraExternalCampaignId}' },
+      { from: '{{INVENTORY_SOURCE}}', to: '{celtraExternalSupplierName}' },
+      { from: '{{AUCTION_ID}}', to: '{celtraExternalSessionId}' },
+      { from: '{{LINE_ITEM_ID}}', to: '{celtraExternalLineItemId}' },
+      { from: '{{SITE_NAME}}', to: '{celtraExternalSiteName}' },
+      { from: '{{SITE_ID}}', to: '{celtraExternalSiteId}' },
+      { from: '%%BLIS_BANNER_ID%%', to: '{celtraExternalCreativeId}' },
+      { from: '%%BLIS_PUBLISHER_ID%%', to: '{celtraExternalSiteId}' },
+      { from: '%%BLIS_PUBLISHER_NAME%%', to: '{celtraExternalSiteName}' },
+      { from: '%%BLIS_SSP_ID%%', to: '{celtraExternalSupplierId}' },
+      { from: '%%BLIS_BOOKING_ID%%', to: '{celtraExternalCampaignId}' },
+      { from: '%%BLIS_CAMPAIGN_ID%%', to: '{celtraExternalLineItemId}' },
+      { from: '%%BLIS_IMP_IDENT%%', to: '{celtraExternalSessionId}' },
+      { from: '%%BLIS_BUNDLE%%', to: '{celtraExternalBundleId}' },
+      { from: '[CREATIVEID]', to: '{celtraExternalCreativeId}' },
+      { from: '[STRATEGYID]', to: '{celtraExternalPlacementId}' },
+      { from: '[INVENTORYID]', to: '{celtraExternalBundleId}' },
+      { from: '[PUBLISHERID]', to: '{celtraExternalSiteId}' },
+      { from: '[ADEXCHANGE]', to: '{celtraExternalSupplierName}' },
+      { from: '[CAMPAIGNID]', to: '{celtraExternalCampaignId}' },
+      { from: '[CLICKID]', to: '{celtraExternalSessionId}' },
+      { from: '${CREATIVE_ID}', to: '{celtraExternalCreativeId}' },
+      { from: '${CAMPAIGN_ID}', to: '{celtraExternalCampaignId}' },
+      { from: '${BID_ID}', to: '{celtraExternalSessionId}' },
+      { from: '${CREATIVE_ID}', to: '{celtraExternalCreativeId}' },
+      { from: '${UNIVERSAL_SITE_ID}', to: '{celtraExternalSiteId}' },
+      { from: '${SOURCE_URL_ENC}', to: '{celtraExternalSiteName}' },
+      { from: '${PUBLISHER_ID}', to: '{celtraExternalSupplierId}' },
+      { from: '${CAMPAIGN_ID}', to: '{celtraExternalCampaignId}' },
+      { from: '${AUCTION_ID}', to: '{celtraExternalSessionId}' },
+      { from: '${BUNDLE_ID}', to: '{celtraExternalBundleId}' },
+      { from: '${HAWK_CREATIVE_ID}', to: '{celtraExternalCreativeId}' },
+      { from: '${HAWK_LINE_ID}', to: '{celtraExternalPlacementId}' },
+      { from: '${HAWK_SITE_OR_APP_ID}', to: '{celtraExternalSiteId}' },
+      { from: '${HAWK_SITE_OR_APP_NAME}', to: '{celtraExternalSiteName}' },
+      { from: '${HAWK_PUBLISHER_ID}', to: '{celtraExternalSupplierId}' },
+      { from: '${HAWK_SSP_NAME}', to: '{celtraExternalSupplierName}' },
+      { from: '${HAWK_CAMPAIGN_ID}', to: '{celtraExternalCampaignId}' },
+      { from: '${HAWK_BUNDLE_ID}', to: '{celtraExternalBundleId}' },
+      { from: '$!{SITE_URL}', to: '{celtraExternalSiteId}' },
+      { from: '$!{CREATIVE_ID}', to: '{celtraExternalCreativeId}' },
+      { from: '$!{INVENTORY_SOURCE_ID}', to: '{celtraExternalSupplierId}' },
+      { from: '$!{LINE_ITEM_ID}', to: '{celtraExternalLineItemId}' },
+      { from: '$!{APP_ID}', to: '{celtraExternalBundleId}' },
+      { from: '$!{AD_CALL_ID}', to: '{celtraExternalSessionId}' },
+      { from: '{SA_REF_ID}', to: '{celtraExternalSessionId}' },
+      { from: '{SA_REF_DOMAIN}', to: '{celtraExternalSiteName}' },
+      { from: '{SA_SOURCE_ID}', to: '{celtraExternalSiteId}' },
+      { from: '{SA_CAMPAIGN_ID}', to: '{celtraExternalCampaignId}' },
+      { from: '{SA_LINE_ITEM_ID}', to: '{celtraExternalLineItemId}' },
+      { from: '{SA_CREATIVE_ID}', to: '{celtraExternalCreativeId}' },
+      { from: '{SA_PLACEMENT_ID}', to: '{celtraExternalPlacementId}' },
+      { from: '{SA_BUNDLE_ID}', to: '{celtraExternalBundleId}' },
+      { from: '{SA_CREATIVE_NAME}', to: '{celtraExternalCreativeName}' },
+      { from: '%%TTD_CREATIVEID%%', to: '{celtraExternalCreativeId}' },
+      { from: '%%TTD_ADGROUPID%%', to: '{celtraExternalPlacementId}' },
+      { from: '%%TTD_IMPRESSIONID%%', to: '{celtraExternalSessionId}' },
+      { from: '%%TTD_SITE%%', to: '{celtraExternalSiteId}' },
+      { from: '%%TTD_SITE%%', to: '{celtraExternalSiteName}' },
+      { from: '%%TTD_PARTNERID%%', to: '{celtraExternalSupplierId}' },
+      { from: '%%TTD_SUPPLYVENDOR%%', to: '{celtraExternalSupplierName}' },
+      { from: '%%TTD_CAMPAIGNID%%', to: '{celtraExternalCampaignId}' },
+      { from: '%%TTD_ADGROUPID%%', to: '{celtraExternalLineItemId}' },
+      { from: '${ADELPHIC_CREATIVEID}', to: '{celtraExternalCreativeId}' },
+      { from: '${ADELPHIC_SITEID}', to: '{celtraExternalSiteId}' },
+      { from: '${ADELPHIC_PUBID}', to: '{celtraExternalSupplierId}' },
+      { from: '${ADELPHIC_SITELET_URL_ENC}', to: '{celtraExternalBundleId}' },
+      { from: '${ADELPHIC_ADORDERID}', to: '{celtraExternalCampaignId}' },
+      { from: '${LIBRARYADID}', to: '{celtraExternalCreativeId}' },
+      { from: '${TRAFFICKEDADID}', to: '{celtraExternalPlacementId}' },
+      { from: '${PLACEMENTID}', to: '{celtraExternalLineItemId}' },
+      { from: '${ORDERID}', to: '{celtraExternalCampaignId}' },
+      { from: '${PUBLISHERID}', to: '{celtraExternalSupplierId}' },
+      { from: '[SITE]', to: '{celtraExternalSiteId}' }
+    ];
+
+    // Enable if macros may appear inside formulas
+    const REPLACE_IN_FORMULAS = false;
+
+    const $file = document.getElementById('file');
+    const $run = document.getElementById('run');
+    const $status = document.getElementById('status');
+    const $log = document.getElementById('log');
+    const $copy = document.getElementById('copy');
+    const $downloadLog = document.getElementById('downloadLog');
+
+    const logLines = [];
+    function log(line) {
+      logLines.push(line);
+      $log.textContent = logLines.join('\n');
+      const hasLog = logLines.length > 0;
+      $copy.disabled = !hasLog;
+      $downloadLog.disabled = !hasLog;
+    }
+
+    function setStatus(text, cls) {
+      $status.className = cls ? cls : 'muted';
+      $status.textContent = text;
+    }
+
+    function sanitizeFileName(name) {
+      return (name || 'output')
+        .replace(/[\\\/:*?"<>|]+/g, '_')
+        .replace(/\s+/g, ' ')
+        .trim()
+        .slice(0, 180);
+    }
+
+    function getExtLower(fileName) {
+      const m = (fileName || '').match(/\.([a-z0-9]+)$/i);
+      return m ? m[1].toLowerCase() : '';
+    }
+
+    function countOccurrences(haystack, needle) {
+      if (!needle) return 0;
+      let count = 0;
+      let pos = 0;
+      while (true) {
+        const idx = haystack.indexOf(needle, pos);
+        if (idx === -1) break;
+        count++;
+        pos = idx + needle.length;
+      }
+      return count;
+    }
+
+    function applyReplacements(text, statsPerRule) {
+      let out = text;
+      for (let i = 0; i < REPLACEMENTS.length; i++) {
+        const { from, to } = REPLACEMENTS[i];
+        if (!from) continue;
+
+        const n = countOccurrences(out, from);
+        if (n > 0) statsPerRule[i] += n;
+
+        out = out.split(from).join(to);
+      }
+      return out;
+    }
+
+    $file.addEventListener('change', () => {
+      logLines.length = 0;
+      $log.textContent = '';
+
+      const f = $file.files && $file.files[0];
+      if (!f) {
+        $run.disabled = true;
+        setStatus('Please select a file…');
+        return;
+      }
+
+      const ext = getExtLower(f.name);
+      if (!['xls', 'xlsx'].includes(ext)) {
+        $run.disabled = true;
+        setStatus('This does not look like an Excel file', 'warn');
+        log(`WARNING: file extension .${ext || '(none)'}`);
+        return;
+      }
+
+      $run.disabled = false;
+      setStatus(`Selected: ${f.name}`, 'ok');
+
+      log(`File: ${f.name}`);
+      log(`Extension: .${ext}`);
+      log(`Replacement rules: ${REPLACEMENTS.length}`);
+      REPLACEMENTS.forEach(r => log(`  - ${r.from}  →  ${r.to}`));
+    });
+
+    $copy.addEventListener('click', async () => {
+      try {
+        await navigator.clipboard.writeText(logLines.join('\n'));
+        setStatus('Log copied to clipboard', 'ok');
+      } catch {
+        setStatus('Failed to copy log (browser permissions)', 'warn');
+      }
+    });
+
+    $downloadLog.addEventListener('click', () => {
+      const blob = new Blob([logLines.join('\n')], { type: 'text/plain;charset=utf-8' });
+      const a = document.createElement('a');
+      a.href = URL.createObjectURL(blob);
+      a.download = 'macro_fixer_log.txt';
+      document.body.appendChild(a);
+      a.click();
+      a.remove();
+    });
+
+    $run.addEventListener('click', async () => {
+      const f = $file.files && $file.files[0];
+      if (!f) return;
+
+      setStatus('Reading Excel file…');
+      log('--- START ---');
+
+      let arrayBuffer;
+      try {
+        arrayBuffer = await f.arrayBuffer();
+      } catch (e) {
+        setStatus('Failed to read file.', 'err');
+        log(`Read error: ${String(e)}`);
+        return;
+      }
+
+      let wb;
+      try {
+        wb = XLSX.read(arrayBuffer, { type: 'array' });
+      } catch (e) {
+        setStatus('Failed to parse Excel file.', 'err');
+        log(`Parse error: ${String(e)}`);
+        log('Tip: If this is a very old .xls file, try saving it as .xlsx and upload again.');
+        return;
+      }
+
+      const statsPerRule = REPLACEMENTS.map(() => 0);
+      let changedCells = 0;
+      let changedSheets = new Set();
+      let totalCellsVisited = 0;
+
+      for (const sheetName of wb.SheetNames) {
+        const ws = wb.Sheets[sheetName];
+        if (!ws) continue;
+
+        for (const addr of Object.keys(ws)) {
+          if (addr[0] === '!') continue;
+
+          const cell = ws[addr];
+          if (!cell) continue;
+
+          totalCellsVisited++;
+
+          const isText = cell.t === 's' || typeof cell.v === 'string';
+          const isFormula = typeof cell.f === 'string';
+
+          if (isText) {
+            const original = String(cell.v ?? '');
+            const replaced = applyReplacements(original, statsPerRule);
+            if (replaced !== original) {
+              cell.v = replaced;
+              cell.t = 's';
+              changedCells++;
+              changedSheets.add(sheetName);
+            }
+          }
+
+          if (REPLACE_IN_FORMULAS && isFormula) {
+            const originalF = String(cell.f);
+            const replacedF = applyReplacements(originalF, statsPerRule);
+            if (replacedF !== originalF) {
+              cell.f = replacedF;
+              changedCells++;
+              changedSheets.add(sheetName);
+            }
+          }
+        }
+      }
+
+      const totalChanges = statsPerRule.reduce((a,b) => a+b, 0);
+      log(`Sheets: ${wb.SheetNames.length}`);
+      log(`Cells visited: ${totalCellsVisited}`);
+      log(`Cells modified: ${changedCells}`);
+      log(`Sheets with changes: ${changedSheets.size}${changedSheets.size ? ' (' + Array.from(changedSheets).join(', ') + ')' : ''}`);
+      log(`Total replacements: ${totalChanges}`);
+      log('Replacements per rule:');
+      REPLACEMENTS.forEach((r, i) => log(`  - ${r.from} → ${r.to} : ${statsPerRule[i]}`));
+
+      setStatus('Saving fixed XLSX…');
+
+      const baseNoExt = sanitizeFileName((f.name || 'input').replace(/\.(xls|xlsx)$/i, ''));
+      const outName = `${baseNoExt}_fixed.xlsx`;
+
+      try {
+        XLSX.writeFile(wb, outName, { bookType: 'xlsx' });
+      } catch (e) {
+        setStatus('Failed to save XLSX.', 'err');
+        log(`Write error: ${String(e)}`);
+        return;
+      }
+
+      setStatus(`Done: ${outName} downloaded`, 'ok');
+      log('--- END ---');
+    });
+  </script>
+</body>
+</html>
