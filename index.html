@@ -162,7 +162,14 @@
       { from: '${PLACEMENTID}', to: '{celtraExternalLineItemId}' },
       { from: '${ORDERID}', to: '{celtraExternalCampaignId}' },
       { from: '${PUBLISHERID}', to: '{celtraExternalSupplierId}' },
-      { from: '[SITE]', to: '{celtraExternalSiteId}' }
+      { from: '[SITE]', to: '{celtraExternalSiteId}' },
+      { from: '[creativeId]', to: 'externalCreativeId' },
+      { from: '[channelSource]', to: 'externalPlacementName' },
+      { from: '[pageUrl]', to: 'externalSiteName' },
+      { from: '[verticalId]', to: 'externalSupplierId' },
+      { from: '[campaignId]', to: 'externalCampaignId' },
+      { from: '[adBuyId]', to: 'externalLineItemId' },
+      { from: '[adBuyName]', to: 'externalLineItemName' }
     ];
 
     // Enable if macros may appear inside formulas
