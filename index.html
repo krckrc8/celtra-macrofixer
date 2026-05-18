@@ -167,7 +167,9 @@
       { from: '[verticalId]', to: '{celtraExternalSupplierId}' },
       { from: '[campaignId]', to: '{celtraExternalCampaignId}' },
       { from: '[adBuyId]', to: '{celtraExternalLineItemId}' },
-      { from: '[adBuyName]', to: '{celtraExternalLineItemName}' }
+      { from: '[adBuyName]', to: '{celtraExternalLineItemName}' },
+      // new list 08.05.2026
+      { from: '[CACHEBUSTER]', to: '[timestamp]' }
     ];
 
     // Enable if macros may appear inside formulas
